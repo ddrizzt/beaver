@@ -1,0 +1,335 @@
+{
+  "AWSTemplateFormatVersion" : "2010-09-09",
+  "Description" : "To start a datastream demo, it included: Kinesis Stream + Kinesis Firehouse + Redshift + EC2(with grafana installed)",
+  "Parameters" : {
+    "KeyName" : {
+      "Description" : "Name of an existing EC2 KeyPair to enable SSH access to the instance",
+      "Type" : "AWS::EC2::KeyPair::KeyName",
+      "ConstraintDescription" : "must be the name of an existing EC2 KeyPair."
+    },
+    "InstanceType" : {
+      "Description" : "WebServer EC2 instance type",
+      "Type" : "String",
+      "Default" : "t2.micro",
+      "AllowedValues" : ["t2.micro"],
+      "ConstraintDescription" : "must be a valid EC2 instance type."
+    },
+    "RedshiftRootUser" : {
+      "Description" : "Root user name for redshift cluster",
+      "Type" : "String",
+      "AllowedPattern" : "[0-9a-zA-Z_]{4,24}",
+      "ConstraintDescription" : "Root user name for the redshift cluster"
+    },
+    "IPRange" : {
+      "Description" : "The IP address range that can be open to public",
+      "Type" : "String",
+      "MinLength" : "9",
+      "MaxLength" : "18",
+      "Default" : "0.0.0.0/0",
+      "AllowedPattern" : "(\\d{1,3})\\.(\\d{1,3})\\.(\\d{1,3})\\.(\\d{1,3})/(\\d{1,2})",
+      "ConstraintDescription" : "must be a valid IP CIDR range of the form x.x.x.x/x."
+    }
+  },
+  
+  "Mappings" : {
+    "AWSInstanceType2Arch" : {
+      "t2.micro" : {"Arch" : "HVM64"}
+    },
+    "AWSInstanceType2NATArch" : {
+      "t2.micro" : {"Arch" : "NATHVM64"}
+    },
+    "AWSRegionArch2AMI" : {
+      "us-west-2" : {"HVM64" : "ami-31394949"}
+    }
+  },
+  
+  "Resources" : {
+    "PasswordStr": {
+      "Type": "AWS::CloudFormation::CustomResource",
+      "Properties": {
+        "Length": 8,
+        "Punctuation": true,
+        "RDSCompatible": true,
+        "ServiceToken": "arn:aws:lambda:us-west-2:944574695791:function:PassGenereator"
+      }
+    },
+    
+    "IAMRole" : {
+      "Type" : "AWS::IAM::Role",
+      "Properties" : {
+        "AssumeRolePolicyDocument" : {
+          "Version" : "2012-10-17",
+          "Statement" : [
+            {
+              "Effect" : "Allow",
+              "Principal" : {
+                "Service" : ["firehose.amazonaws.com"]
+              },
+              "Action" : ["sts:AssumeRole"]
+            }
+          ]
+        },
+        "Path" : "/",
+        "Policies" : [
+          {
+            "PolicyName" : "s3_firehose_redshift",
+            "PolicyDocument" : {
+              "Version" : "2012-10-17",
+              "Statement" : [
+                {
+                  "Effect" : "Allow",
+                  "Action" : [
+                    "firehose:*",
+                    "redshift:*",
+                    "kinesis:*",
+                    "s3:DeleteObject",
+                    "s3:PutObject",
+                    "s3:GetObject",
+                    "s3:ListBucket",
+                    "s3:ListAllMyBuckets"
+                  ],
+                  "Resource" : "*"
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    
+    "myuser" : {
+      "Type" : "AWS::IAM::User",
+      "Properties" : {
+        "Path" : "/",
+        "LoginProfile" : {
+          "Password" : {"Fn::GetAtt": ["PasswordStr", "RandomString"]}
+        },
+        "Policies" : [
+          {
+            "PolicyName" : "tmp_s3access",
+            "PolicyDocument" : {
+              "Version" : "2012-10-17",
+              "Statement" : [
+                {
+                  "Effect" : "Allow",
+                  "Action" : [
+                    "kinesis:*",
+                    "s3:PutObject",
+                    "s3:GetObject",
+                    "s3:ListBucket"
+                  ],
+                  "Resource" : "*"
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    
+    "myaccesskey" : {
+      "Type" : "AWS::IAM::AccessKey",
+      "Properties" : {
+        "UserName" : {"Ref" : "myuser"}
+      }
+    },
+    
+    "InstanceSecurityGroup" : {
+      "Type" : "AWS::EC2::SecurityGroup",
+      "Properties" : {
+        "GroupDescription" : "Enable SSH + Granfana + Redshift",
+        "SecurityGroupIngress" : [
+          {
+            "IpProtocol" : "tcp", "FromPort" : "22", "ToPort" : "22", "CidrIp" : {"Ref" : "IPRange"}
+          },
+          {
+            "IpProtocol" : "tcp", "FromPort" : "3000", "ToPort" : "3000", "CidrIp" : {"Ref" : "IPRange"}
+          },
+          {
+            "IpProtocol" : "tcp", "FromPort" : "5439", "ToPort" : "5439", "CidrIp" : {"Ref" : "IPRange"}
+          }
+        ]
+      }
+    },
+    
+    "LogGroup" : {
+      "Type" : "AWS::Logs::LogGroup",
+      "Properties" : {
+        "RetentionInDays" : 7
+      }
+    },
+    
+    "LogStream4FhRedshift" : {
+      "Type" : "AWS::Logs::LogStream",
+      "Properties" : {
+        "LogGroupName" : {"Ref" : "LogGroup"}
+      }
+    },
+    
+    "LogStream4FhS3" : {
+      "Type" : "AWS::Logs::LogStream",
+      "Properties" : {
+        "LogGroupName" : {"Ref" : "LogGroup"}
+      }
+    },
+    
+    "Redshift" : {
+      "Type" : "AWS::Redshift::Cluster",
+      "DependsOn" : ["InstanceSecurityGroup"],
+      "Properties" : {
+        "ClusterType" : "single-node",
+        "DBName" : "bookrating",
+        "Encrypted" : false,
+        "MasterUsername" : {"Ref" : "RedshiftRootUser"},
+        "MasterUserPassword" : {"Fn::GetAtt": ["PasswordStr", "RandomString"]},
+        "NodeType" : "dc2.large",
+        "Port" : 5439,
+        "PubliclyAccessible" : true
+      }
+    },
+    
+    "Kinesis" : {
+      "Type" : "AWS::Kinesis::Stream",
+      "DependsOn" : ["Redshift"],
+      "Properties" : {
+        "Name" : "bookrating",
+        "RetentionPeriodHours" : 24,
+        "ShardCount" : 1
+      }
+    },
+    
+    "Firehose" : {
+      "Type" : "AWS::KinesisFirehose::DeliveryStream",
+      "DependsOn" : ["Kinesis"],
+      "Properties" : {
+        "DeliveryStreamName" : "bookrating_fh",
+        "DeliveryStreamType" : "KinesisStreamAsSource",
+        "KinesisStreamSourceConfiguration" : {
+          "KinesisStreamARN" : {"Fn::GetAtt" : ["Kinesis", "Arn"]},
+          "RoleARN" : {"Fn::GetAtt" : ["IAMRole", "Arn"]}
+        },
+        
+        "RedshiftDestinationConfiguration" : {
+          "CloudWatchLoggingOptions" : {
+            "Enabled" : true,
+            "LogGroupName" : {"Ref" : "LogGroup"},
+            "LogStreamName" : {"Ref" : "LogStream4FhRedshift"}
+          },
+          "ClusterJDBCURL" : {"Fn::Join" : ["", ["jdbc:redshift://", {"Fn::GetAtt" : ["Redshift", "Endpoint.Address"]}, ":5439/bookrating"]]},
+          "CopyCommand" : {
+            "CopyOptions" : "MAXERROR 10000\ndelimiter ','\nGZIP\nTIMEFORMAT 'YYYY-MM-DD HH:MI:SS'\nREGION 'us-west-1'",
+            "DataTableColumns" : "logtime,user_id,book_id,rating",
+            "DataTableName" : "rating"
+          },
+          "Username" : {"Ref" : "RedshiftRootUser"},
+          "Password" : {"Fn::GetAtt": ["PasswordStr", "RandomString"]},
+          "RoleARN" : {"Fn::GetAtt" : ["IAMRole", "Arn"]},
+          "S3Configuration" : {
+            "BucketARN" : "arn:aws:s3:::gd-shdevops",
+            "BufferingHints" : {
+              "IntervalInSeconds" : "60",
+              "SizeInMBs" : "1"
+            },
+            "CompressionFormat" : "GZIP",
+            "Prefix" : "eason/datastream/logs/",
+            "RoleARN" : {"Fn::GetAtt" : ["IAMRole", "Arn"]},
+            "CloudWatchLoggingOptions" : {
+              "Enabled" : true,
+              "LogGroupName" : {"Ref" : "LogGroup"},
+              "LogStreamName" : {"Ref" : "LogStream4FhS3"}
+            }
+          }
+        }
+      }
+    },
+    
+    "EC2Instance" : {
+      "Type" : "AWS::EC2::Instance",
+      "DependsOn" : ["Firehose"],
+      "Properties" : {
+        "InstanceType" : {"Ref" : "InstanceType"},
+        "SecurityGroups" : [{"Ref" : "InstanceSecurityGroup"}],
+        "KeyName" : {"Ref" : "KeyName"},
+        "ImageId" : {
+          "Fn::FindInMap" : [
+            "AWSRegionArch2AMI", {"Ref" : "AWS::Region"},
+            {"Fn::FindInMap" : ["AWSInstanceType2Arch", {"Ref" : "InstanceType"}, "Arch"]}
+          ]
+        },
+        "UserData" : {
+          "Fn::Base64" : {
+            "Fn::Join" : [
+              "", [
+                "#!/bin/bash -v\n",
+                "yum update -y\n",
+                "yum -y install python-pip\n",
+                "pip install s4cmd\n",
+                "chmod +x /bin/s4cmd\n",
+                "yum -y install https://s3-us-west-2.amazonaws.com/grafana-releases/release/grafana-5.1.4-1.x86_64.rpm\n",
+                "service grafana-server start\n",
+                "grafana-cli plugins install grafana-piechart-panel\n",
+                "yum -y install postgresql\n",
+                
+                "mkdir -p /mnt/datastream/\n",
+                "cd /mnt/datastream/",
+                " && s4cmd --secret-key=", {"Fn::GetAtt" : ["myaccesskey", "SecretAccessKey"]}, " --access-key=", {"Ref" : "myaccesskey"}, " get s3://gd-shdevops/eason/datastream/code/demo_datastream.tar.gz",
+                " && tar zxf demo_datastream.tar.gz\n",
+                
+                "cd /mnt/datastream/demo_datastream",
+                " && export ACCKEY='", {"Ref" : "myaccesskey"}, "'",
+                " && export SECKEY='", {"Fn::GetAtt" : ["myaccesskey", "SecretAccessKey"]}, "'",
+                " && cat dbinit.sql | perl -ne 'chomp($_);  $str = $_; $str =~ s/ACCKEY/$ENV{'ACCKEY'}/g; $str =~ s/SECKEY/$ENV{'SECKEY'}/g; print \"$str\\n\";' > dbinit_new.sql\n",
+                "export PGPASSWORD='", {"Fn::GetAtt": ["PasswordStr", "RandomString"]}, "'",
+                " && psql -h ", {"Fn::GetAtt" : ["Redshift", "Endpoint.Address"]}, " -U ", {"Ref" : "RedshiftRootUser"}, " -d bookrating -p 5439 -f dbinit_new.sql\n",
+                
+                "cat send_rating_data.py | perl -ne 'chomp($_); $str = $_; $str =~ s/ACCKEY/$ENV{'ACCKEY'}/g; $str =~ s/SECKEY/$ENV{'SECKEY'}/g; print \"$str\\n\";' > send_rating_data_new.py && rm send_rating_data.py && mv send_rating_data_new.py send_rating_data.py\n",
+                
+                "cd /mnt/datastream/ && s4cmd --secret-key=", {"Fn::GetAtt" : ["myaccesskey", "SecretAccessKey"]}, " --access-key=", {"Ref" : "myaccesskey"},
+                " get s3://gd-shdevops/eason/datastream/rating.tar.gz && tar zxf rating.tar.gz && mv ratings.csv demo_datastream/\n",
+                
+                "cd /mnt/datastream/demo_datastream",
+                " && export REDSHIFT_DOMAIN='", {"Fn::GetAtt" : ["Redshift", "Endpoint.Address"]}, ":5439'",
+                " && cat bookrating_ds.yaml | perl -ne 'chomp($_);  $str = $_; $str =~ s/REDSHIFT_DOMAIN/$ENV{'REDSHIFT_DOMAIN'}/g; $str =~ s/PGPASS/$ENV{'PGPASSWORD'}/g; print \"$str\\n\";' > bookrating_ds_new.yaml",
+                " && mv bookrating_ds_new.yaml /etc/grafana/provisioning/datasources/\n",
+                
+                "service grafana-server restart\n",
+                ""
+              ]
+            ]
+          }
+        }
+      }
+    }
+  },
+  
+  "Outputs" : {
+    "AZ" : {
+      "Description" : "Availability Zone of the newly created EC2 instance",
+      "Value" : {"Fn::GetAtt" : ["EC2Instance", "AvailabilityZone"]}
+    },
+    "InstanceId" : {
+      "Description" : "InstanceId of the newly created EC2 instance",
+      "Value" : {"Ref" : "EC2Instance"}
+    },
+    "PublicDNSIP" : {
+      "Description" : "Public DNS and IP for the Ec2",
+      "Value" : {"Fn::Join" : ["", [{"Fn::GetAtt" : ["EC2Instance", "PublicDnsName"]}, " / ", {"Fn::GetAtt" : ["EC2Instance", "PublicIp"]}]]}
+    },
+    "Redshift" : {
+      "Description" : "Redshift instance HOST:PORT User/Pass",
+      "Value" : {"Fn::Join" : ["", [{"Fn::GetAtt" : ["Redshift", "Endpoint.Address"]}, ":", {"Fn::GetAtt" : ["Redshift", "Endpoint.Port"]}, "   ", {"Ref" : "RedshiftRootUser"} ," / ", {"Fn::GetAtt": ["PasswordStr", "RandomString"]}]]}
+    },
+    "KinesisFirehose" : {
+      "Description" : "Kinesis Firehose ID",
+      "Value" : {"Fn::GetAtt" : ["Firehose", "Arn"]}
+    },
+    "GrafanaURL" : {
+      "Description" : "Grafana Service URL, user/password: admin/admin",
+      "Value" : {"Fn::Join" : ["", ["http://", {"Fn::GetAtt" : ["EC2Instance", "PublicIp"]}, ":3000"]]}
+    },
+    "AKSK4S3" : {
+      "Description" : "AKSK for S3 keys",
+      "Value" : {"Fn::Join" : ["", [{"Ref" : "myaccesskey"}, " / ", {"Fn::GetAtt" : ["myaccesskey", "SecretAccessKey"]}]]}
+    }
+  }
+}
