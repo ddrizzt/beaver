@@ -37,7 +37,6 @@ public class MainController {
     //Sample: http://localhost:8080/beaver/createstack?stackname=abc&templatename=dovecot_director_demo&user=eason&availableregion=us-west-2&parametsjson=%7b%22KeyName%22%3a%22eason_personal_rsa%22%7d
     //Sample: http://localhost:8080/beaver/createstack?stackname=abc&templatename=kinesis_data_demo&user=eason&availableregion=us-west-2&parametsjson=%7b%22KeyName%22%3a%22eason_personal_rsa%22%2c+%22RedshiftRootUser%22%3a%22eason%22%7d
     @GetMapping(path = "/createstack")
-    @PutMapping(path = "/createstack")
     @Transactional
     public @ResponseBody
     String createStacks(HttpServletRequest request, @RequestParam String user, @RequestParam String stackname, @RequestParam String availableregion, @RequestParam String templatename, @RequestParam(required = false) String parametsjson, @RequestParam(required = false) String comments) {
@@ -95,13 +94,13 @@ public class MainController {
     }
 
     //Sample: http://localhost:8080/beaver/deletestack?stackname=abc&user=eason
-    @DeleteMapping(path = "/deletestack/{username}/{stackname}")
+    @GetMapping(path = "/deletestack/{user}/{stackname}")
     @Transactional
     public @ResponseBody
-    String deleteStacks(HttpServletRequest request, @PathVariable String username, @PathVariable String stackname, @RequestBody(required = false) String comments) {
+    String deleteStacks(HttpServletRequest request, @PathVariable String user, @PathVariable String stackname, @RequestBody(required = false) String comments) {
         JsonObject response = new JsonObject();
         String se = request.getSession().getId();
-        lg.info(String.format("%s -- Request delete stack %s by %s", se, stackname, username));
+        lg.info(String.format("%s -- Request delete stack %s by %s", se, stackname, user));
 
 
         List<Stacks> sts = stRepository.findByStackname(stackname);
