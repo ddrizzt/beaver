@@ -18,6 +18,8 @@ public class Stacks {
 
     private String stackname;
 
+    private String stackarn;
+
     private String username;
 
     private String parameters;
@@ -41,8 +43,8 @@ public class Stacks {
     private Date updatedat;
 
     public String toString() {
-        return String.format("%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s",
-                stackid, stackname, username, parameters, templateid, availableregion, comments, status, stackoutputs,
+        return String.format("%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s",
+                stackid, stackname, stackarn, username, parameters, templateid, availableregion, comments, status, stackoutputs,
                 stackresources, stackevents, DICT.DF_YMDHMS.format(createdat), DICT.DF_YMDHMS.format(updatedat));
     }
 
@@ -50,6 +52,7 @@ public class Stacks {
         JsonObject json = new JsonObject();
         json.put("stackid", stackid);
         json.put("stackname", stackname);
+        json.put("stackarn", stackarn);
 
         if (!StringUtil.isEmpty(parameters))
             json.put("parameters", JsonParser.create().parseAsJsonObject(parameters));
@@ -79,6 +82,14 @@ public class Stacks {
         json.put("createdat", DICT.DF_YMDHMS.format(createdat));
         json.put("updatedat", DICT.DF_YMDHMS.format(updatedat));
         return json.toString();
+    }
+
+    public String getStackarn() {
+        return stackarn;
+    }
+
+    public void setStackarn(String stackarn) {
+        this.stackarn = stackarn;
     }
 
     public Integer getStackid() {

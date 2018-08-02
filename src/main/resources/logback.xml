@@ -1,15 +1,12 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <configuration>
-
-
     <appender name="SAVE-TO-FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
-        <file>/mnt/apps/modules/beaver/beaver.log</file>
         <encoder class="ch.qos.logback.classic.encoder.PatternLayoutEncoder">
             <Pattern>%d{MM/dd/yyyy HH:mm:ss.SSS} [%thread] %-5level %logger{10} - %msg%n</Pattern>
         </encoder>
         <rollingPolicy class="ch.qos.logback.core.rolling.TimeBasedRollingPolicy">
             <fileNamePattern>${LOG_PATH}/beaver_%d{dd-MM-yyyy}.log</fileNamePattern>
-            <maxHistory>90</maxHistory>
+            <maxHistory>30</maxHistory>
             <totalSizeCap>1GB</totalSizeCap>
         </rollingPolicy>
     </appender>

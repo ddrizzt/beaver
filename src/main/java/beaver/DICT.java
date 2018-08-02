@@ -26,6 +26,8 @@ public final class DICT {
 
     public static final String CF_ROLLBACK_COMPLETE = "ROLLBACK_COMPLETE";
 
+    public static final String ERROR_ON_API = "ERROR_ON_API";
+
     public static final SimpleDateFormat DF_YMDHMS = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
 
     public static final SimpleDateFormat DF_YMD = new SimpleDateFormat("yyyy-MM-dd");

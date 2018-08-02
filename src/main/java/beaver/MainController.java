@@ -13,7 +13,6 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
 
 import javax.servlet.http.HttpServletRequest;
-import java.io.IOException;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
@@ -60,7 +59,7 @@ public class MainController {
 
         List<Stacks> sts = stRepository.findByStackname(stackname);
         if (!sts.isEmpty()) {
-            lg.error(String.format("%s -- Same st %s already existed!", se, stackname));
+            lg.error(String.format("%s -- Same stack %s already existed!", se, stackname));
             json.put("Message", "Same stack already existed!");
             return json.toString();
         }
@@ -68,47 +67,41 @@ public class MainController {
         st.setUsername(user);
         st.setStackname(stackname);
         st.setTemplateid(tls.get(0).getTemplateid());
+        st.setStackarn("");
         st.setComments(comments);
         st.setParameters(parametsjson);
         st.setAvailableregion(availableregion);
         st.setStatus(DICT.CF_PENDING);
         st.setCreatedat(new Date(System.currentTimeMillis()));
         st.setUpdatedat(new Date(System.currentTimeMillis()));
-        stRepository.save(st);
-
-        StackLogs stl = new StackLogs();
-        stl.setStackid(st.getStackid());
-        stl.setUsername(user);
-        stl.setStatus(DICT.CF_PENDING);
-        stl.setCreatedat(new Date(System.currentTimeMillis()));
-        stl.setUpdatedat(new Date(System.currentTimeMillis()));
-        stlRepository.save(stl);
 
         Map<String, Object> params = new HashMap<String, Object>();
         if (!StringUtil.isEmpty(parametsjson)) {
             params = new JsonParser().parse(parametsjson);
         }
 
-        try {
-            CloudformationTracker clt = new CloudformationTracker(se, st, templatename, params, stlRepository, stRepository);
-            CloudFormationHandler.getHander().submit(clt);
-        } catch (IOException e) {
-            lg.error(String.format("%s -- Fail to submit thread! %s", e.getMessage()));
+        JsonObject resp = new JsonObject();
+        CloudformationTracker clt = new CloudformationTracker(se, st, templatename, params, stlRepository, stRepository);
+        st = clt.createStack();
+        if (st.getStackid() == null || st.getStatus().equals(DICT.ERROR_ON_API)) {
+            lg.error(String.format("%s -- Create stack failed! %s", se, st.getComments()));
+            resp.put("Message", String.format("%s -- Create stack failed! %s", se, st.getComments()));
+            return resp.toString();
         }
-
+        CloudFormationHandler.getHander().submitTask(clt);
 
         lg.info(String.format("%s -- Stack Saved: %s, %s", se, st.getStackid(), st.getStackname()));
         return st.toJsonStr();
     }
 
     //Sample: http://localhost:8080/beaver/deletestack?stackname=abc&user=eason
-    @GetMapping(path = "/deletestack")
+    @DeleteMapping(path = "/deletestack/{username}/{stackname}")
     @Transactional
     public @ResponseBody
-    String deleteStacks(HttpServletRequest request, @RequestParam String user, @RequestParam String stackname, @RequestParam(required = false) String comments) {
+    String deleteStacks(HttpServletRequest request, @PathVariable String username, @PathVariable String stackname, @RequestBody(required = false) String comments) {
         JsonObject response = new JsonObject();
         String se = request.getSession().getId();
-        lg.info(String.format("%s -- Request delete stack %s by %s", se, stackname, user));
+        lg.info(String.format("%s -- Request delete stack %s by %s", se, stackname, username));
 
 
         List<Stacks> sts = stRepository.findByStackname(stackname);
@@ -118,7 +111,22 @@ public class MainController {
             return response.toString();
         }
 
-        CloudFormationHandler.getHander().submit(new CloudformationTracker(se, sts.get(0), stlRepository, stRepository));
+        Stacks st = sts.get(0);
+        if (st.getStatus().equals(DICT.CF_DELETE_COMPLETE)) {
+            lg.info(String.format("%s -- Stack had already been deleted. %s", se, stackname));
+            response.put("Message", String.format("%s -- Stack %s had already been deleted. %s", se, stackname, st.getStatus()));
+            return response.toString();
+        }
+
+        CloudformationTracker cft = new CloudformationTracker(se, st, stlRepository, stRepository);
+        st = cft.deleteStack();
+        if (st.getStatus().equals(DICT.ERROR_ON_API)) {
+            lg.error(String.format("%s -- Delete stack failed. %s, %s, %s", se, stackname, st.getStatus(), st.getComments()));
+            response.put("Message", String.format("%s -- Delete stack failed. %s, %s, %s", se, stackname, st.getStatus(), st.getComments()));
+            return response.toString();
+        }
+
+        CloudFormationHandler.getHander().submitTask(cft);
         response.put("Message", "Stack is deleting now, need several minutes to complete...");
 
         return response.toString();
@@ -127,23 +135,23 @@ public class MainController {
     //Sample: http://localhost:8080/beaver/stacklogs?stackname=e1
     @RequestMapping(value = "/stacklogs", method = RequestMethod.GET, produces = "text/json; charset=utf-8")
     public @ResponseBody
-    String getAllStacklogs(HttpServletRequest request, @RequestParam String stackname, @RequestParam(required = false) Integer status) {
+    String getAllStacklogs(HttpServletRequest request, @RequestParam String stackname, @RequestParam(required = false) String status) {
         String se = request.getSession().getId();
         lg.info(String.format("%s -- Request stack logs %s, %s", se, stackname, status));
         List<Stacks> sts = stRepository.findByStackname(stackname);
         if (sts.isEmpty()) {
-            lg.error("Wrong stack name: %s", se, stackname);
+            lg.error(String.format("Wrong stack name: %s", se, stackname));
             JsonObject resp = new JsonObject();
             resp.put("Message", "Can't find your given stack info!");
             return resp.toString();
         }
 
-        lg.info(String.format("%s -- Search stacklogs by name:%s, status:%s.", se, stackname, status));
+        lg.info(String.format("%s -- Search stacklogs by name:%s, status: %s.", se, stackname, status));
         List<StackLogs> stls = null;
         if (status != null) {
-            stls = stlRepository.findByStackidAndStatus(sts.get(0).getStackid(), status);
+            stls = stlRepository.findByStackidAndStatusOrderByCreatedatDesc(sts.get(0).getStackid(), status);
         } else {
-            stls = stlRepository.findByStackid(sts.get(0).getStackid());
+            stls = stlRepository.findByStackidOrderByCreatedatDesc(sts.get(0).getStackid());
         }
 
         JsonArray jsonArray = new JsonArray();

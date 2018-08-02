@@ -40,6 +40,7 @@ DROP TABLE IF exists stacks;
 CREATE TABLE stacks (
   stackid int(11) not null auto_increment,
   stackname varchar(50) not null,
+  stackarn varchar(100) not null,
   username varchar(50) not null,
   templateid int(11) not null,
   availableregion varchar(50) null,
@@ -79,7 +80,7 @@ COLLATE = utf8_bin;
 insert into templates (templateid, templatename, availableregion, status, createdat, updatedat) values
  (1, 'dovecot_director_demo', 'us-west-2', 1, now(), now()),
  (2, 'kinesis_data_demo', 'us-west-2', 1, now(), now()),
- (3, 'postfix_simple_demo', 'us-west-2', 1, now(), now());
+ (3, 'ec2_simple_demo', 'us-west-2', 1, now(), now());
 
 
 

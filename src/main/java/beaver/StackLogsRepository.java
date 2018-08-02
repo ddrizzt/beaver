@@ -15,8 +15,8 @@ public interface StackLogsRepository extends  CrudRepository<StackLogs, Integer>
     List<StackLogs> findByUsername(@Param("username") String username);
 
     @RestResource(path="*", rel="*")
-    List<StackLogs> findByStackid(@Param("stackid") Integer stackid);
+    List<StackLogs> findByStackidOrderByCreatedatDesc(@Param("stackid") Integer stackid);
 
     @RestResource(path="*", rel="*")
-    List<StackLogs> findByStackidAndStatus(@Param("stackid") Integer stackid, @Param("status") Integer status);
+    List<StackLogs> findByStackidAndStatusOrderByCreatedatDesc(@Param("stackid") Integer stackid, @Param("status") String status);
 }

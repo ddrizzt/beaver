@@ -1,6 +1,6 @@
 {
   "AWSTemplateFormatVersion" : "2010-09-09",
-  "Description" : "To start a datastream demo, it included: Kinesis Stream + Kinesis Firehouse + Redshift + EC2(with grafana installed)",
+  "Description" : "To start a empty ec2 instance",
   "Parameters" : {
     "KeyName" : {
       "Description" : "Name of an existing EC2 KeyPair to enable SSH access to the instance",
@@ -52,7 +52,6 @@
 
     "EC2Instance" : {
       "Type" : "AWS::EC2::Instance",
-      "DependsOn" : ["Firehose"],
       "Properties" : {
         "InstanceType" : {"Ref" : "InstanceType"},
         "SecurityGroups" : [{"Ref" : "InstanceSecurityGroup"}],
