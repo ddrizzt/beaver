@@ -1,0 +1,102 @@
+{
+  "AWSTemplateFormatVersion" : "2010-09-09",
+  "Description" : "To start a datastream demo, it included: Kinesis Stream + Kinesis Firehouse + Redshift + EC2(with grafana installed)",
+  "Parameters" : {
+    "KeyName" : {
+      "Description" : "Name of an existing EC2 KeyPair to enable SSH access to the instance",
+      "Type" : "AWS::EC2::KeyPair::KeyName",
+      "ConstraintDescription" : "must be the name of an existing EC2 KeyPair."
+    },
+    "InstanceType" : {
+      "Description" : "WebServer EC2 instance type",
+      "Type" : "String",
+      "Default" : "t2.micro",
+      "AllowedValues" : ["t2.micro"],
+      "ConstraintDescription" : "must be a valid EC2 instance type."
+    },
+    "IPRange" : {
+      "Description" : "The IP address range that can be open to public",
+      "Type" : "String",
+      "MinLength" : "9",
+      "MaxLength" : "18",
+      "Default" : "0.0.0.0/0",
+      "AllowedPattern" : "(\\d{1,3})\\.(\\d{1,3})\\.(\\d{1,3})\\.(\\d{1,3})/(\\d{1,2})",
+      "ConstraintDescription" : "must be a valid IP CIDR range of the form x.x.x.x/x."
+    }
+  },
+
+  "Mappings" : {
+    "AWSInstanceType2Arch" : {
+      "t2.micro" : {"Arch" : "HVM64"}
+    },
+    "AWSInstanceType2NATArch" : {
+      "t2.micro" : {"Arch" : "NATHVM64"}
+    },
+    "AWSRegionArch2AMI" : {
+      "us-west-2" : {"HVM64" : "ami-31394949"}
+    }
+  },
+
+  "Resources" : {
+    "InstanceSecurityGroup" : {
+      "Type" : "AWS::EC2::SecurityGroup",
+      "Properties" : {
+        "GroupDescription" : "Enable SSH",
+        "SecurityGroupIngress" : [
+          {
+            "IpProtocol" : "tcp", "FromPort" : "22", "ToPort" : "22", "CidrIp" : {"Ref" : "IPRange"}
+          }
+        ]
+      }
+    },
+
+    "EC2Instance" : {
+      "Type" : "AWS::EC2::Instance",
+      "DependsOn" : ["Firehose"],
+      "Properties" : {
+        "InstanceType" : {"Ref" : "InstanceType"},
+        "SecurityGroups" : [{"Ref" : "InstanceSecurityGroup"}],
+        "KeyName" : {"Ref" : "KeyName"},
+        "ImageId" : {
+          "Fn::FindInMap" : [
+            "AWSRegionArch2AMI", {"Ref" : "AWS::Region"},
+            {"Fn::FindInMap" : ["AWSInstanceType2Arch", {"Ref" : "InstanceType"}, "Arch"]}
+          ]
+        },
+        "UserData" : {
+          "Fn::Base64" : {
+            "Fn::Join" : [
+              "", [
+                "#!/bin/bash -v\n",
+                "yum update -y\n",
+                "yum -y install python-pip\n",
+                "pip install s4cmd\n",
+                "chmod +x /bin/s4cmd\n",
+                "yum -y install https://s3-us-west-2.amazonaws.com/grafana-releases/release/grafana-5.1.4-1.x86_64.rpm\n",
+                "service grafana-server start\n",
+                "grafana-cli plugins install grafana-piechart-panel\n",
+                "yum -y install postgresql\n",
+                ""
+              ]
+            ]
+          }
+        }
+      }
+    }
+  },
+
+  "Outputs" : {
+    "AZ" : {
+      "Description" : "Availability Zone of the newly created EC2 instance",
+      "Value" : {"Fn::GetAtt" : ["EC2Instance", "AvailabilityZone"]}
+    },
+    "InstanceId" : {
+      "Description" : "InstanceId of the newly created EC2 instance",
+      "Value" : {"Ref" : "EC2Instance"}
+    },
+    "PublicDNSIP" : {
+      "Description" : "Public DNS and IP for the Ec2",
+      "Value" : {"Fn::Join" : ["", [{"Fn::GetAtt" : ["EC2Instance", "PublicDnsName"]}, " / ", {"Fn::GetAtt" : ["EC2Instance", "PublicIp"]}]]}
+    }
+  }
+}
