@@ -40,7 +40,7 @@ DROP TABLE IF exists stacks;
 CREATE TABLE stacks (
   stackid int(11) not null auto_increment,
   stackname varchar(50) not null,
-  stackarn varchar(100) not null,
+  stackarn varchar(250) not null,
   username varchar(50) not null,
   templateid int(11) not null,
   availableregion varchar(50) null,

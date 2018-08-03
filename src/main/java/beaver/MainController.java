@@ -34,12 +34,11 @@ public class MainController {
     @Autowired
     private StackLogsRepository stlRepository;
 
-    //Sample: http://localhost:8080/beaver/createstack?stackname=abc&templatename=dovecot_director_demo&user=eason&availableregion=us-west-2&parametsjson=%7b%22KeyName%22%3a%22eason_personal_rsa%22%7d
-    //Sample: http://localhost:8080/beaver/createstack?stackname=abc&templatename=kinesis_data_demo&user=eason&availableregion=us-west-2&parametsjson=%7b%22KeyName%22%3a%22eason_personal_rsa%22%2c+%22RedshiftRootUser%22%3a%22eason%22%7d
-    @GetMapping(path = "/createstack")
+    //Sample: curl -X PUT -d 'parametsjson={"KeyName": "eason_personal_rsa"}'  http://localhost:8080/beaver/createstack/eason/e3/us-west-2/ec2_simple_demo
+    @PutMapping(path = "/createstack/{user}/{stackname}/{availableregion}/{templatename}")
     @Transactional
     public @ResponseBody
-    String createStacks(HttpServletRequest request, @RequestParam String user, @RequestParam String stackname, @RequestParam String availableregion, @RequestParam String templatename, @RequestParam(required = false) String parametsjson, @RequestParam(required = false) String comments) {
+    String createStacks(HttpServletRequest request, @PathVariable String user, @PathVariable String stackname, @PathVariable String availableregion, @PathVariable String templatename, @RequestParam(required = false) String parametsjson, @RequestParam(required = false) String comments) {
         String se = request.getSession().getId();
         lg.info(String.format("%s -- Request new st %s by %s on region %s", se, user, stackname, availableregion));
         Stacks st = new Stacks();
@@ -93,15 +92,14 @@ public class MainController {
         return st.toJsonStr();
     }
 
-    //Sample: http://localhost:8080/beaver/deletestack?stackname=abc&user=eason
-    @GetMapping(path = "/deletestack/{user}/{stackname}")
+    //Sample: curl -X DELETE http://localhost:8080/beaver/deletestack/user/stackname
+    @DeleteMapping(path = "/deletestack/{user}/{stackname}")
     @Transactional
     public @ResponseBody
     String deleteStacks(HttpServletRequest request, @PathVariable String user, @PathVariable String stackname, @RequestBody(required = false) String comments) {
         JsonObject response = new JsonObject();
         String se = request.getSession().getId();
         lg.info(String.format("%s -- Request delete stack %s by %s", se, stackname, user));
-
 
         List<Stacks> sts = stRepository.findByStackname(stackname);
         if (sts.isEmpty()) {
@@ -131,10 +129,10 @@ public class MainController {
         return response.toString();
     }
 
-    //Sample: http://localhost:8080/beaver/stacklogs?stackname=e1
-    @RequestMapping(value = "/stacklogs", method = RequestMethod.GET, produces = "text/json; charset=utf-8")
+    //Sample: http://localhost:8080/beaver/stacklogs/stackname/status
+    @RequestMapping(value = {"/stacklogs/{stackname}/{status}", "/stacklogs/{stackname}"}, method = RequestMethod.GET, produces = "text/json; charset=utf-8")
     public @ResponseBody
-    String getAllStacklogs(HttpServletRequest request, @RequestParam String stackname, @RequestParam(required = false) String status) {
+    String getAllStacklogs(HttpServletRequest request, @PathVariable String stackname, @PathVariable(required = false) String status) {
         String se = request.getSession().getId();
         lg.info(String.format("%s -- Request stack logs %s, %s", se, stackname, status));
         List<Stacks> sts = stRepository.findByStackname(stackname);
@@ -159,10 +157,10 @@ public class MainController {
         return jsonArray.toString();
     }
 
-    //Sample: http://localhost:8080/beaver/stacks?stackname=e1
-    @RequestMapping(value = "/stacks", method = RequestMethod.GET, produces = "text/json; charset=utf-8")
+    //Sample: http://localhost:8080/beaver/stacks/stackname
+    @RequestMapping(value = "/stacks/{stackname}", method = RequestMethod.GET, produces = "text/json; charset=utf-8")
     public @ResponseBody
-    String getStackInfo(HttpServletRequest request, @RequestParam String stackname) {
+    String getStackInfo(HttpServletRequest request, @PathVariable String stackname) {
         String se = request.getSession().getId();
         lg.info(String.format("%s -- Request stack info %s", se, stackname));
         List<Stacks> sts = stRepository.findByStackname(stackname);

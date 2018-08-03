@@ -135,8 +135,7 @@ public class CloudformationTracker implements Callable<CloudformationTracker> {
                 Thread.sleep(30000);
             }
 
-            reflushStackAndLogs(stlogStatus, deleteOnly);
-            lg.info(String.format("%s -- Stack %s had been DELETED, exit tracker thread now.", se, stacks.getStackname()));
+            lg.info(String.format("%s -- Stack %s:%s, exit tracker thread now.", se, stacks.getStackname(), stacks.getStatus()));
 
         } catch (Exception e) {
             lg.error(String.format(String.format("%s -- Cloudformation Tracker %s failed: %s", se, stacks.getStackname(), e.getMessage())));
@@ -170,7 +169,7 @@ public class CloudformationTracker implements Callable<CloudformationTracker> {
                     JsonArray jsonArray = new JsonArray();
                     for (Output ot : ots) {
                         JsonObject json = new JsonObject();
-                        json.put("Key", ot.getOutputValue());
+                        json.put("Key", ot.getOutputKey());
                         json.put("Value", ot.getOutputValue());
                         json.put("Desc", ot.getDescription());
                         jsonArray.add(json);
